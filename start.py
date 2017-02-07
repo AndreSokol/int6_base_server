@@ -1,4 +1,6 @@
 import socket
+import sys
+import traceback
 import page_renderer as render
 
 # headers
@@ -26,6 +28,19 @@ Connection: Closed
 
 # code
 
+def renderServerErrorPage(err):
+    ans = '<link rel="stylesheet" href="/st/css/errorpage.css">'
+    ans += "<div><h1>ERROR :(</h1></div>"
+    ans += "<p><b>What happened:</b> " + str(sys.exc_info()[1]) + "</p>"
+    ans += "<pre>"
+    #t = ""
+    for elem in traceback.extract_tb(sys.exc_info()[2]).format():
+        ans += elem.replace("<", "$").replace(">", "$").replace("\n", "<br>")#.replace("  ", "&nbsp;&nbsp;")
+        #t += elem.replace("<", "$").replace(">", "$").replace("\n", "<br>").replace("  ", "&nbsp;&nbsp;") + "\n"
+    ans += "</pre>"
+    return ans
+
+
 HOST, PORT = '', 8080
 
 listen_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -35,7 +50,10 @@ listen_socket.listen(1)
 
 print('Serving HTTP on port', PORT)
 while True:
-    client_connection, client_address = listen_socket.accept()
+    try:
+        client_connection, client_address = listen_socket.accept()
+    except KeyboardInterrupt:
+        break
     request = client_connection.recv(1024)
 
     try:
@@ -49,13 +67,21 @@ while True:
             fileToSend = open("static/" + path[4:], "rb")
             http_response = HEADERS_200_FILE + fileToSend.read()
             fileToSend.close()
-            print("Resolved file request at", path)
+            print("[ OK] File request at", path)
         except:
-            print("unsuccessfully tried to open", path)
+            print("[ERR] No file at", path)
             http_response = HEADERS_404
     else:
-        print("Request page at: '", path, "'", sep="")
-        page_code = render.main(path)
-        http_response = HEADERS_200_HTML + page_code.encode()
+        print("[   ] Request page at: '", path, "'...", sep="")
+        try:
+            page_code = render.main(path)
+            http_response = HEADERS_200_HTML + page_code.encode()
+            print("[ OK] Request fulfilled successfully")
+        except:
+            http_response = HEADERS_200_HTML + renderServerErrorPage(sys.exc_info()).encode()
+            print("[ERR] Error happened during page render:", sys.exc_info()[1])
+            print("      (more info on page)")
     client_connection.sendall(http_response)
     client_connection.close()
+
+print("Server stopped")
